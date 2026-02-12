@@ -7,8 +7,9 @@ export class EnterpriseController {
   // 创建企业
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const enterprise = await enterpriseService.create(req.body);
-      res.status(201).json(ResponseUtils.created(enterprise, 'Enterprise created'));
+      const userId = req.user!.userId;
+      const enterprise = await enterpriseService.create(userId, req.body);
+      res.status(201).json(ResponseUtils.created(enterprise, 'Company created'));
     } catch (error) {
       next(error);
     }
@@ -27,16 +28,14 @@ export class EnterpriseController {
   // 搜索企业
   async search(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name, creditCode, legalPerson, status, page, pageSize } = req.query;
+      const userId = req.user!.userId;
+      const { name, page, pageSize } = req.query;
 
       const result = await enterpriseService.search({
         name: name as string,
-        creditCode: creditCode as string,
-        legalPerson: legalPerson as string,
-        status: status as string,
         page: page ? parseInt(page as string) : 1,
         pageSize: pageSize ? parseInt(pageSize as string) : 20,
-      });
+      }, userId);
 
       res.json(ResponseUtils.paginated(
         result.data,
@@ -52,8 +51,9 @@ export class EnterpriseController {
   // 更新企业
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const enterprise = await enterpriseService.update(req.params.id, req.body);
-      res.json(ResponseUtils.success(enterprise, 'Enterprise updated'));
+      const userId = req.user!.userId;
+      const enterprise = await enterpriseService.update(req.params.id, userId, req.body);
+      res.json(ResponseUtils.success(enterprise, 'Company updated'));
     } catch (error) {
       next(error);
     }
@@ -62,8 +62,9 @@ export class EnterpriseController {
   // 删除企业
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      await enterpriseService.delete(req.params.id);
-      res.json(ResponseUtils.success(null, 'Enterprise deleted'));
+      const userId = req.user!.userId;
+      await enterpriseService.delete(req.params.id, userId);
+      res.json(ResponseUtils.success(null, 'Company deleted'));
     } catch (error) {
       next(error);
     }

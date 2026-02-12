@@ -1,80 +1,48 @@
 // 工单服务层
 import { prisma } from '../lib/prisma';
 import { AppError } from '../core/error';
-import { WorkOrderType, WorkOrderStatus, Priority } from '@prisma/client';
 
 export interface WorkOrderCreateDto {
-  type: WorkOrderType;
-  title: string;
-  description?: string;
-  priority?: Priority;
-  enterpriseId?: string;
-  parameters?: any;
+  type: string;
+  description: string;
+  companyName: string;
+  contactName: string;
+  contactPhone: string;
 }
 
-export class WorkOrderService {
+export class ServiceOrderService {
   // 创建工单
   async create(userId: string, data: WorkOrderCreateDto) {
-    // 验证企业存在（如果提供了）
-    if (data.enterpriseId) {
-      const enterprise = await prisma.enterprise.findUnique({
-        where: { id: data.enterpriseId },
-      });
-      if (!enterprise) {
-        throw AppError.notFoundError('Enterprise not found');
-      }
-    }
-
-    return prisma.workOrder.create({
+    return prisma.serviceOrder.create({
       data: {
         userId,
         type: data.type,
-        title: data.title,
         description: data.description,
-        priority: data.priority || 'MEDIUM',
-        status: 'OPEN',
+        companyName: data.companyName,
+        contactName: data.contactName,
+        contactPhone: data.contactPhone,
+        status: 'PENDING',
       },
     });
   }
 
   // 获取工单列表
-  async list(userId: string, isAdmin: boolean, params: {
-    status?: WorkOrderStatus;
-    type?: WorkOrderType;
-    priority?: Priority;
-    page?: number;
-    pageSize?: number;
-  }) {
-    const { status, type, priority, page = 1, pageSize = 20 } = params;
-
-    const where: any = {};
-
-    // 非管理员只能看自己的工单
-    if (!isAdmin) {
-      where.userId = userId;
-    }
-
+  async list(userId: string, page = 1, pageSize = 20, status?: string) {
+    const where: any = { userId };
     if (status) where.status = status;
-    if (type) where.type = type;
-    if (priority) where.priority = priority;
 
-    const [workorders, total] = await Promise.all([
-      prisma.workOrder.findMany({
+    const [orders, total] = await Promise.all([
+      prisma.serviceOrder.findMany({
         where,
         skip: (page - 1) * pageSize,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
-        include: {
-          user: {
-            select: { id: true, name: true, email: true },
-          },
-        },
       }),
-      prisma.workOrder.count({ where }),
+      prisma.serviceOrder.count({ where }),
     ]);
 
     return {
-      data: workorders,
+      data: orders,
       pagination: {
         page,
         pageSize,
@@ -85,136 +53,66 @@ export class WorkOrderService {
   }
 
   // 获取工单详情
-  async getById(id: string, userId: string, isAdmin: boolean) {
-    const workorder = await prisma.workOrder.findUnique({
+  async getById(id: string, userId: string) {
+    const order = await prisma.serviceOrder.findUnique({
       where: { id },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true },
-        },
-      },
     });
 
-    if (!workorder) {
-      throw AppError.notFoundError('WorkOrder not found');
+    if (!order) {
+      throw AppError.notFoundError('ServiceOrder not found');
     }
 
-    // 非管理员只能看自己的工单
-    if (!isAdmin && workorder.userId !== userId) {
-      throw AppError.authorizationError('Access denied');
+    // 验证权限
+    if (order.userId !== userId) {
+      throw AppError.authorizationError('Not authorized to view this order');
     }
 
-    return workorder;
+    return order;
   }
 
   // 更新工单状态
-  async updateStatus(id: string, status: WorkOrderStatus, result?: string) {
-    await this.getById(id, '', true); // 验证存在
-
+  async updateStatus(id: string, userId: string, status: string) {
+    const order = await this.getById(id, userId);
+    
     // 验证状态转换
-    this.validateStatusTransition(status);
+    const validTransitions: Record<string, string[]> = {
+      'PENDING': ['IN_PROGRESS', 'CANCELLED'],
+      'IN_PROGRESS': ['COMPLETED', 'CANCELLED'],
+      'COMPLETED': [],
+      'CANCELLED': [],
+    };
 
-    return prisma.workOrder.update({
-      where: { id },
-      data: {
-        status,
-        result,
-      },
-    });
-  }
-
-  // 指派工单
-  async assign(id: string, assigneeId?: string) {
-    await this.getById(id, '', true);
-
-    return prisma.workOrder.update({
-      where: { id },
-      data: {
-        status: 'IN_PROGRESS',
-        // 可以添加 assignee 字段
-      },
-    });
-  }
-
-  // 取消工单
-  async cancel(id: string, userId: string, isAdmin: boolean) {
-    const workorder = await this.getById(id, userId, isAdmin);
-
-    if (workorder.status !== 'OPEN' && !isAdmin) {
-      throw AppError.badRequest('Only open workorders can be cancelled');
+    if (!validTransitions[order.status]?.includes(status)) {
+      throw AppError.badRequest(`Cannot transition from ${order.status} to ${status}`);
     }
 
-    return prisma.workOrder.update({
+    return prisma.serviceOrder.update({
       where: { id },
-      data: { status: 'CLOSED' },
+      data: { status },
     });
+  }
+
+  // 删除工单
+  async delete(id: string, userId: string) {
+    await this.getById(id, userId);
+    await prisma.serviceOrder.delete({ where: { id } });
+    return true;
   }
 
   // 获取工单统计
-  async getStatistics(userId: string, isAdmin: boolean) {
-    const where = isAdmin ? {} : { userId };
+  async getStatistics(userId: string) {
+    const where = { userId };
 
-    const [
-      total,
-      openCount,
-      inProgressCount,
-      resolvedCount,
-      closedCount,
-      byType,
-      byPriority,
-    ] = await Promise.all([
-      prisma.workOrder.count({ where }),
-      prisma.workOrder.count({ where: { ...where, status: 'OPEN' } }),
-      prisma.workOrder.count({ where: { ...where, status: 'IN_PROGRESS' } }),
-      prisma.workOrder.count({ where: { ...where, status: 'RESOLVED' } }),
-      prisma.workOrder.count({ where: { ...where, status: 'CLOSED' } }),
-      prisma.workOrder.groupBy({
-        by: ['type'],
-        where,
-        _count: true,
-      }),
-      prisma.workOrder.groupBy({
-        by: ['priority'],
-        where,
-        _count: true,
-      }),
+    const [total, pending, inProgress, completed, cancelled] = await Promise.all([
+      prisma.serviceOrder.count({ where }),
+      prisma.serviceOrder.count({ where: { ...where, status: 'PENDING' } }),
+      prisma.serviceOrder.count({ where: { ...where, status: 'IN_PROGRESS' } }),
+      prisma.serviceOrder.count({ where: { ...where, status: 'COMPLETED' } }),
+      prisma.serviceOrder.count({ where: { ...where, status: 'CANCELLED' } }),
     ]);
 
-    return {
-      total,
-      byStatus: {
-        open: openCount,
-        inProgress: inProgressCount,
-        pendingCustomer: await prisma.workOrder.count({ 
-          where: { ...where, status: 'PENDING_CUSTOMER' } 
-        }),
-        resolved: resolvedCount,
-        closed: closedCount,
-      },
-      byType: byType.map(t => ({
-        type: t.type,
-        count: t._count,
-      })),
-      byPriority: byPriority.map(p => ({
-        priority: p.priority,
-        count: p._count,
-      })),
-    };
-  }
-
-  // 验证状态转换
-  private validateStatusTransition(newStatus: WorkOrderStatus) {
-    const validTransitions: Record<WorkOrderStatus, WorkOrderStatus[]> = {
-      OPEN: ['IN_PROGRESS', 'CLOSED', 'CANCELLED'],
-      IN_PROGRESS: ['PENDING_CUSTOMER', 'RESOLVED', 'CLOSED'],
-      PENDING_CUSTOMER: ['IN_PROGRESS', 'RESOLVED', 'CLOSED'],
-      RESOLVED: ['CLOSED', 'IN_PROGRESS'],
-      CLOSED: [], // 终态
-    };
-
-    // 这里需要传入当前状态，暂时简化处理
-    // 实际项目中应该先查询当前状态
+    return { total, pending, inProgress, completed, cancelled };
   }
 }
 
-export const workOrderService = new WorkOrderService();
+export const serviceOrderService = new ServiceOrderService();

@@ -4,8 +4,17 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
+}
+
+// RefreshToken Model
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }
 
 // User Model
@@ -14,19 +23,13 @@ model User {
   email     String   @unique
   password  String
   name      String?
-  role      Role     @default(USER)
+  role      String   @default("USER") // SQLite doesn't support enums well
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  companies    Company[]
-  reports      Report[]
-  serviceOrders ServiceOrder[]
-}
-
-enum Role {
-  USER
-  ADMIN
-  ANALYST
+  companies       Company[]
+  reports         Report[]
+  serviceOrders   ServiceOrder[]
 }
 
 // Company Model - 存储企业信息
@@ -81,13 +84,13 @@ model FinancialData {
 model Report {
   id          String   @id @default(uuid())
   title       String
-  type        ReportType
-  status      ReportStatus @default(PENDING)
-  content     Json?    // 报告内容
+  type        String   // SQLite doesn't support enums well
+  status      String   @default("PENDING")
+  content     String?  // JSON stored as string in SQLite
   
   // NFS计算结果
   netFinancingSpace Float?   // 净融资空间
-  recommendedAssets Json?    // 推荐资产配置
+  recommendedAssets String?  // JSON stored as string
   
   companyId   String
   company     Company  @relation(fields: [companyId], references: [id])
@@ -98,25 +101,11 @@ model Report {
   updatedAt   DateTime @updatedAt
 }
 
-enum ReportType {
-  CREDIT        // 信用评估报告
-  NFS           // 净融资空间报告
-  ASSET_CONFIG  // 资产配置报告
-  RISK_ANALYSIS // 风险分析报告
-}
-
-enum ReportStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-}
-
 // ServiceOrder Model - 线下服务工单
 model ServiceOrder {
   id          String   @id @default(uuid())
-  type        ServiceType
-  status      OrderStatus @default(PENDING)
+  type        String
+  status      String   @default("PENDING")
   description String
   
   companyName String
@@ -130,16 +119,15 @@ model ServiceOrder {
   updatedAt   DateTime @updatedAt
 }
 
-enum ServiceType {
-  CONSULTATION
-  FINANCING
-  ASSET_MANAGEMENT
-  OTHER
-}
-
-enum OrderStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
+// NFS Calculation Model - NFS计算结果
+model NfsCalculation {
+  id          String   @id @default(uuid())
+  enterpriseId String
+  inputData   String   // JSON stored as string
+  resultData  String   // JSON stored as string
+  score       Float?
+  riskLevel   String?
+  status      String   @default("COMPLETED")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

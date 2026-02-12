@@ -11,11 +11,13 @@ const router = Router();
 router.use(authenticate);
 
 // ============ 报告生成与查询 ============
-router.post('/report/generate',
+router.post('/reports/generate',
   body('type')
-    .isIn(['CREDIT', 'ASSET', 'NFS', 'COMPREHENSIVE'])
+    .isIn(['CREDIT', 'NFS', 'ASSET_CONFIG', 'RISK_ANALYSIS'])
     .withMessage('Invalid report type'),
   body('title').notEmpty().withMessage('Report title is required'),
+  body('enterpriseId').optional().isUUID().withMessage('Invalid enterprise ID'),
+  validate,
   reportController.generate.bind(reportController)
 );
 
@@ -29,14 +31,9 @@ router.get('/reports',
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
   query('type')
     .optional()
-    .isIn(['CREDIT', 'ASSET', 'NFS', 'COMPREHENSIVE'])
+    .isIn(['CREDIT', 'NFS', 'ASSET_CONFIG', 'RISK_ANALYSIS'])
     .withMessage('Invalid report type'),
   reportController.list.bind(reportController)
-);
-
-router.get('/reports/:id/download',
-  param('id').isUUID().withMessage('Invalid report ID'),
-  reportController.download.bind(reportController)
 );
 
 router.delete('/reports/:id',

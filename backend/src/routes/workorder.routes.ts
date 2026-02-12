@@ -1,8 +1,8 @@
-// 工单路由
+// 服务工单路由
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
 import { workOrderController } from '../controllers/workorder.controller';
-import { authenticate, authorize } from '../middlewares/auth.middleware';
+import { authenticate } from '../middlewares/auth.middleware';
 import { validate } from '../middlewares/validate.middleware';
 
 const router = Router();
@@ -10,55 +10,49 @@ const router = Router();
 // 所有路由需要认证
 router.use(authenticate);
 
-// ============ 工单基础操作 ============
-router.post('/workorders/create',
+// ============ 工单操作 ============
+router.post('/service-orders',
   body('type')
-    .isIn(['CREDIT_QUERY', 'ASSET_SEARCH', 'NFS_CALCULATION', 'REPORT_GENERATION', 'TECHNICAL_SUPPORT', 'OTHER'])
-    .withMessage('Invalid workorder type'),
-  body('title').notEmpty().withMessage('Title is required'),
+    .isIn(['CONSULTATION', 'FINANCING', 'ASSET_MANAGEMENT', 'OTHER'])
+    .withMessage('Invalid order type'),
+  body('description').notEmpty().withMessage('Description is required'),
+  body('companyName').notEmpty().withMessage('Company name is required'),
+  body('contactName').notEmpty().withMessage('Contact name is required'),
+  body('contactPhone').notEmpty().withMessage('Contact phone is required'),
+  validate,
   workOrderController.create.bind(workOrderController)
 );
 
-router.get('/workorders',
+router.get('/service-orders',
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
   query('status')
     .optional()
-    .isIn(['OPEN', 'IN_PROGRESS', 'PENDING_CUSTOMER', 'RESOLVED', 'CLOSED'])
+    .isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
     .withMessage('Invalid status'),
-  query('type')
-    .optional()
-    .isIn(['CREDIT_QUERY', 'ASSET_SEARCH', 'NFS_CALCULATION', 'REPORT_GENERATION', 'TECHNICAL_SUPPORT', 'OTHER'])
-    .withMessage('Invalid type'),
   workOrderController.list.bind(workOrderController)
 );
 
-router.get('/workorders/:id',
-  param('id').isUUID().withMessage('Invalid workorder ID'),
+router.get('/service-orders/:id',
+  param('id').isUUID().withMessage('Invalid order ID'),
   workOrderController.getById.bind(workOrderController)
 );
 
-// ============ 工单状态管理 ============
-router.put('/workorders/:id/status',
-  param('id').isUUID().withMessage('Invalid workorder ID'),
+router.put('/service-orders/:id/status',
+  param('id').isUUID().withMessage('Invalid order ID'),
   body('status')
-    .isIn(['OPEN', 'IN_PROGRESS', 'PENDING_CUSTOMER', 'RESOLVED', 'CLOSED'])
+    .isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
     .withMessage('Invalid status'),
+  validate,
   workOrderController.updateStatus.bind(workOrderController)
 );
 
-router.post('/workorders/:id/assign',
-  param('id').isUUID().withMessage('Invalid workorder ID'),
-  workOrderController.assign.bind(workOrderController)
+router.delete('/service-orders/:id',
+  param('id').isUUID().withMessage('Invalid order ID'),
+  workOrderController.delete.bind(workOrderController)
 );
 
-router.delete('/workorders/:id/cancel',
-  param('id').isUUID().withMessage('Invalid workorder ID'),
-  workOrderController.cancel.bind(workOrderController)
-);
-
-// ============ 工单统计 ============
-router.get('/workorders/statistics/summary',
+router.get('/service-orders/statistics',
   workOrderController.getStatistics.bind(workOrderController)
 );
 

@@ -2,117 +2,103 @@
 import { prisma } from '../lib/prisma';
 import { AppError } from '../core/error';
 
-export interface EnterpriseSearchDto {
+export interface CompanySearchDto {
   name?: string;
   creditCode?: string;
   legalPerson?: string;
-  status?: string;
   page?: number;
   pageSize?: number;
 }
 
-export interface EnterpriseParseDto {
+export interface CompanyCreateDto {
   name: string;
-  creditCode?: string;
-  legalPerson?: string;
-  registeredCapital?: string;
-  establishmentDate?: string;
+  unifiedSocialCreditCode?: string;
+  legalRepresentative?: string;
+  registrationCapital?: number;
+  paidInCapital?: number;
+  establishmentDate?: Date;
   address?: string;
   businessScope?: string;
-  reportData: any;
+  industry?: string;
+  annualRevenue?: number;
+  totalAssets?: number;
+  totalLiabilities?: number;
+  netAssets?: number;
+  creditScore?: number;
+  riskLevel?: string;
 }
 
 export class EnterpriseService {
   // 创建企业
-  async create(data: EnterpriseParseDto) {
-    const existing = data.creditCode 
-      ? await prisma.enterprise.findUnique({
-          where: { creditCode: data.creditCode },
-        })
-      : null;
-
-    if (existing) {
-      throw AppError.conflictError('Enterprise with this credit code already exists');
+  async create(userId: string, data: CompanyCreateDto) {
+    // 检查统一社会信用代码是否已存在
+    if (data.unifiedSocialCreditCode) {
+      const existing = await prisma.company.findUnique({
+        where: { unifiedSocialCreditCode: data.unifiedSocialCreditCode },
+      });
+      if (existing) {
+        throw AppError.conflictError('Company with this credit code already exists');
+      }
     }
 
-    return prisma.enterprise.create({
+    return prisma.company.create({
       data: {
-        name: data.name,
-        creditCode: data.creditCode,
-        legalPerson: data.legalPerson,
-        registeredCapital: data.registeredCapital,
-        establishmentDate: data.establishmentDate 
-          ? new Date(data.establishmentDate) 
-          : null,
-        address: data.address,
-        businessScope: data.businessScope,
+        ...data,
+        userId,
       },
     });
   }
 
   // 根据 ID 获取企业
   async findById(id: string) {
-    const enterprise = await prisma.enterprise.findUnique({
+    const company = await prisma.company.findUnique({
       where: { id },
       include: {
-        creditReports: {
+        reports: {
           orderBy: { createdAt: 'desc' },
           take: 10,
         },
-        assets: true,
-        nfsCalculations: {
-          orderBy: { createdAt: 'desc' },
+        financialData: {
+          orderBy: { year: 'desc' },
           take: 5,
         },
       },
     });
 
-    if (!enterprise) {
-      throw AppError.notFoundError('Enterprise not found');
+    if (!company) {
+      throw AppError.notFoundError('Company not found');
     }
 
-    return enterprise;
+    return company;
   }
 
   // 搜索企业
-  async search(params: EnterpriseSearchDto) {
-    const { name, creditCode, legalPerson, status, page = 1, pageSize = 20 } = params;
+  async search(params: CompanySearchDto, userId: string) {
+    const { name, page = 1, pageSize = 20 } = params;
 
-    const where: any = {};
+    const where: any = { userId };
 
     if (name) {
-      where.name = { contains: name, mode: 'insensitive' };
-    }
-    if (creditCode) {
-      where.creditCode = { contains: creditCode, mode: 'insensitive' };
-    }
-    if (legalPerson) {
-      where.legalPerson = { contains: legalPerson, mode: 'insensitive' };
-    }
-    if (status) {
-      where.status = status;
+      where.name = { contains: name };
     }
 
-    const [enterprises, total] = await Promise.all([
-      prisma.enterprise.findMany({
+    const [companies, total] = await Promise.all([
+      prisma.company.findMany({
         where,
         skip: (page - 1) * pageSize,
         take: pageSize,
         orderBy: { createdAt: 'desc' },
         include: {
           _count: {
-            select: {
-              creditReports: true,
-              assets: true,
-            },
+            select: { reports: true },
           },
         },
       }),
-      prisma.enterprise.count({ where }),
+      prisma.company.count({ where }),
     ]);
 
     return {
-      data: enterprises,
+      data: companies,
       pagination: {
         page,
         pageSize,
@@ -123,30 +109,30 @@ export class EnterpriseService {
   }
 
   // 更新企业
-  async update(id: string, data: Partial<EnterpriseParseDto>) {
-    await this.findById(id); // 验证存在
+  async update(id: string, userId: string, data: Partial<CompanyCreateDto>) {
+    const company = await this.findById(id);
+    
+    // 验证权限
+    if (company.userId !== userId) {
+      throw AppError.authorizationError('Not authorized to update this company');
+    }
 
-    return prisma.enterprise.update({
+    return prisma.company.update({
       where: { id },
-      data: {
-        name: data.name,
-        creditCode: data.creditCode,
-        legalPerson: data.legalPerson,
-        registeredCapital: data.registeredCapital,
-        establishmentDate: data.establishmentDate 
-          ? new Date(data.establishmentDate) 
-          : undefined,
-        address: data.address,
-        businessScope: data.businessScope,
-        status: data.status,
-      },
+      data,
     });
   }
 
   // 删除企业
-  async delete(id: string) {
-    await this.findById(id);
-    await prisma.enterprise.delete({ where: { id } });
+  async delete(id: string, userId: string) {
+    const company = await this.findById(id);
+    
+    // 验证权限
+    if (company.userId !== userId) {
+      throw AppError.authorizationError('Not authorized to delete this company');
+    }
+
+    await prisma.company.delete({ where: { id } });
     return true;
   }
 }

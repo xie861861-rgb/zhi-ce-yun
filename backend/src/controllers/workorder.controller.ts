@@ -1,6 +1,6 @@
 // 工单控制器
 import { Request, Response, NextFunction } from 'express';
-import { workOrderService } from '../services/workorder.service';
+import { serviceOrderService } from '../services/workorder.service';
 import { ResponseUtils } from '../core/response';
 
 export class WorkOrderController {
@@ -8,8 +8,8 @@ export class WorkOrderController {
   async create(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
-      const workorder = await workOrderService.create(userId, req.body);
-      res.status(201).json(ResponseUtils.created(workorder, 'WorkOrder created'));
+      const order = await serviceOrderService.create(userId, req.body);
+      res.status(201).json(ResponseUtils.created(order, 'ServiceOrder created'));
     } catch (error) {
       next(error);
     }
@@ -19,16 +19,14 @@ export class WorkOrderController {
   async list(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
-      const isAdmin = req.user!.role === 'ADMIN';
-      const { status, type, priority, page, pageSize } = req.query;
+      const { page, pageSize, status } = req.query;
 
-      const result = await workOrderService.list(userId, isAdmin, {
-        status: status as any,
-        type: type as any,
-        priority: priority as any,
-        page: page ? parseInt(page as string) : 1,
-        pageSize: pageSize ? parseInt(pageSize as string) : 20,
-      });
+      const result = await serviceOrderService.list(
+        userId,
+        page ? parseInt(page as string) : 1,
+        pageSize ? parseInt(pageSize as string) : 20,
+        status as string
+      );
 
       res.json(ResponseUtils.paginated(
         result.data,
@@ -45,9 +43,8 @@ export class WorkOrderController {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
-      const isAdmin = req.user!.role === 'ADMIN';
-      const workorder = await workOrderService.getById(req.params.id, userId, isAdmin);
-      res.json(ResponseUtils.success(workorder));
+      const order = await serviceOrderService.getById(req.params.id, userId);
+      res.json(ResponseUtils.success(order));
     } catch (error) {
       next(error);
     }
@@ -56,48 +53,32 @@ export class WorkOrderController {
   // 更新工单状态
   async updateStatus(req: Request, res: Response, next: NextFunction) {
     try {
-      const { status, result } = req.body;
-      const workorder = await workOrderService.updateStatus(
-        req.params.id,
-        status,
-        result
-      );
-      res.json(ResponseUtils.success(workorder, 'WorkOrder status updated'));
+      const userId = req.user!.userId;
+      const { status } = req.body;
+      const order = await serviceOrderService.updateStatus(req.params.id, userId, status);
+      res.json(ResponseUtils.success(order, 'Status updated'));
     } catch (error) {
       next(error);
     }
   }
 
-  // 指派工单
-  async assign(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { assigneeId } = req.body;
-      const workorder = await workOrderService.assign(req.params.id, assigneeId);
-      res.json(ResponseUtils.success(workorder, 'WorkOrder assigned'));
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  // 取消工单
-  async cancel(req: Request, res: Response, next: NextFunction) {
+  // 删除工单
+  async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
-      const isAdmin = req.user!.role === 'ADMIN';
-      await workOrderService.cancel(req.params.id, userId, isAdmin);
-      res.json(ResponseUtils.success(null, 'WorkOrder cancelled'));
+      await serviceOrderService.delete(req.params.id, userId);
+      res.json(ResponseUtils.success(null, 'ServiceOrder deleted'));
     } catch (error) {
       next(error);
     }
   }
 
-  // 获取工单统计
+  // 获取统计
   async getStatistics(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
-      const isAdmin = req.user!.role === 'ADMIN';
-      const statistics = await workOrderService.getStatistics(userId, isAdmin);
-      res.json(ResponseUtils.success(statistics));
+      const stats = await serviceOrderService.getStatistics(userId);
+      res.json(ResponseUtils.success(stats));
     } catch (error) {
       next(error);
     }

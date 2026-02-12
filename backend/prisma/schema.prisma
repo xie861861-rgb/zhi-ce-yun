@@ -1,0 +1,145 @@
+// Prisma Schema for ZhiCeYun Project
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Model
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companies    Company[]
+  reports      Report[]
+  serviceOrders ServiceOrder[]
+}
+
+enum Role {
+  USER
+  ADMIN
+  ANALYST
+}
+
+// Company Model - 存储企业信息
+model Company {
+  id              String   @id @default(uuid())
+  name            String   // 企业名称
+  unifiedSocialCreditCode String? @unique // 统一社会信用代码
+  registrationCapital Float?  // 注册资本
+  paidInCapital   Float?   // 实缴资本
+  establishmentDate DateTime? // 成立日期
+  legalRepresentative String? // 法定代表人
+  address         String?  // 地址
+  businessScope   String?  // 经营范围
+  industry        String?  // 所属行业
+  
+  // 财务数据
+  annualRevenue   Float?   // 年营收
+  totalAssets     Float?   // 总资产
+  totalLiabilities Float?  // 总负债
+  netAssets       Float?   // 净资产
+  
+  // 评估数据
+  creditScore     Int?     // 信用评分
+  riskLevel       String?  // 风险等级
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  
+  reports         Report[]
+  financialData   FinancialData[]
+}
+
+model FinancialData {
+  id          String   @id @default(uuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  year        Int      // 数据年份
+  quarter     Int?     // 季度
+  
+  revenue     Float?   // 营收
+  profit      Float?   // 利润
+  assets      Float?   // 资产
+  liabilities Float?   // 负债
+  
+  createdAt   DateTime @default(now())
+}
+
+// Report Model - 存储生成的报告
+model Report {
+  id          String   @id @default(uuid())
+  title       String
+  type        ReportType
+  status      ReportStatus @default(PENDING)
+  content     Json?    // 报告内容
+  
+  // NFS计算结果
+  netFinancingSpace Float?   // 净融资空间
+  recommendedAssets Json?    // 推荐资产配置
+  
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum ReportType {
+  CREDIT        // 信用评估报告
+  NFS           // 净融资空间报告
+  ASSET_CONFIG  // 资产配置报告
+  RISK_ANALYSIS // 风险分析报告
+}
+
+enum ReportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ServiceOrder Model - 线下服务工单
+model ServiceOrder {
+  id          String   @id @default(uuid())
+  type        ServiceType
+  status      OrderStatus @default(PENDING)
+  description String
+  
+  companyName String
+  contactName String
+  contactPhone String
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum ServiceType {
+  CONSULTATION
+  FINANCING
+  ASSET_MANAGEMENT
+  OTHER
+}
+
+enum OrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}

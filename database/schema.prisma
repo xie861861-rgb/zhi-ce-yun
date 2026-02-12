@@ -1,0 +1,518 @@
+// Prisma schema for ZhiCeYun Intelligent Agent System
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 公共字段 ====================
+// 软删除和审计字段将通过 @db.Raw 在实际迁移中使用
+
+// ==================== 1. 用户相关表 ====================
+
+model User {
+  id                String         @id @default(uuid())
+  email             String         @unique
+  phone             String?        @unique
+  password_hash     String
+  name              String
+  avatar_url        String?
+  role              UserRole       @default(USER)
+  status            UserStatus     @default(ACTIVE)
+  last_login_at     DateTime?
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+  deleted_at        DateTime?
+
+  // 关联关系
+  sessions          UserSession[]
+  workorders        WorkOrder[]
+  created_reports   Report[]       @relation("CreatedReports")
+  assigned_workorders WorkOrder[]  @relation("AssignedWorkorders")
+
+  @@map("users")
+  @@index([email])
+  @@index([phone])
+  @@index([deleted_at])
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+}
+
+model UserSession {
+  id           String   @id @default(uuid())
+  user_id      String
+  token        String   @unique
+  ip_address   String?
+  user_agent   String?
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+
+  // 关联关系
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("user_sessions")
+  @@index([user_id])
+  @@index([token])
+  @@index([expires_at])
+}
+
+// ==================== 2. 企业相关表 ====================
+
+model Enterprise {
+  id                  String                  @id @default(uuid())
+  name                String
+  unified_social_credit_code String?            @unique // 统一社会信用代码
+  registration_number String?
+  tax_number          String?
+  industry            String?
+  province            String?
+  city                String?
+  district            String?
+  address             String?
+  legal_person        String?
+  registered_capital  Decimal?                @db.Decimal(18, 2)
+  paid_in_capital     Decimal?                @db.Decimal(18, 2)
+  establishment_date  DateTime?
+  business_scope      String?
+  status              EnterpriseStatus        @default(ACTIVE)
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+  deleted_at          DateTime?
+
+  // 关联关系
+  assets              Asset[]
+  credit_reports      EnterpriseCreditReport[]
+  watermother_reports WatermotherReport[]
+  risk_profiles       EnterpriseRiskProfile[]
+  nfs_results         NFSCalculationResult[]
+
+  @@map("enterprises")
+  @@index([name])
+  @@index([unified_social_credit_code])
+  @@index([deleted_at])
+}
+
+enum EnterpriseStatus {
+  ACTIVE
+  INACTIVE
+  DISSOLVED
+  BANKRUPT
+}
+
+model EnterpriseCreditReport {
+  id                  String                  @id @default(uuid())
+  enterprise_id       String
+  report_number       String                  @unique
+  report_date         DateTime                @default(now())
+  credit_score        Int?
+  credit_level        String?
+  risk_score          Int?
+  risk_level          String?
+  main_business       String?
+  financial_highlights String?
+  litigation_risks    String?
+  tax_compliance      String?
+  banking_status      String?
+  report_data         Json?                   // 原始报告数据
+  status              ReportStatus            @default(GENERATING)
+  error_message       String?
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+  deleted_at          DateTime?
+
+  // 关联关系
+  enterprise          Enterprise              @relation(fields: [enterprise_id], references: [id], onDelete: Cascade)
+
+  @@map("enterprise_credit_reports")
+  @@index([enterprise_id])
+  @@index([report_number])
+  @@index([report_date])
+  @@index([deleted_at])
+}
+
+model WatermotherReport {
+  id                  String                  @id @default(uuid())
+  enterprise_id       String
+  report_number       String                  @unique
+  report_date         DateTime                @default(now())
+  overall_score       Int?
+  overall_rating      String?
+  industry_comparison String?
+  growth_potential    String?
+  financial_health     String?
+  management_quality  String?
+  market_position     String?
+  report_data         Json?                   // 原始报告数据
+  status              ReportStatus            @default(GENERATING)
+  error_message       String?
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+  deleted_at          DateTime?
+
+  // 关联关系
+  enterprise          Enterprise              @relation(fields: [enterprise_id], references: [id], onDelete: Cascade)
+
+  @@map("watermother_reports")
+  @@index([enterprise_id])
+  @@index([report_number])
+  @@index([report_date])
+  @@index([deleted_at])
+}
+
+enum ReportStatus {
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+model EnterpriseRiskProfile {
+  id                  String                  @id @default(uuid())
+  enterprise_id       String
+  profile_date        DateTime                @default(now())
+  risk_score          Int?
+  risk_level          String?
+  risk_categories     Json?                   // 风险类别得分
+  risk_factors        Json?                   // 风险因素详情
+  risk_recommendations String?
+  overall_assessment  String?
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+  deleted_at          DateTime?
+
+  // 关联关系
+  enterprise          Enterprise              @relation(fields: [enterprise_id], references: [id], onDelete: Cascade)
+
+  @@map("enterprise_risk_profiles")
+  @@index([enterprise_id])
+  @@index([profile_date])
+  @@index([deleted_at])
+}
+
+// ==================== 3. 资产相关表 ====================
+
+model Asset {
+  id                  String                  @id @default(uuid())
+  enterprise_id       String?
+  asset_type          AssetType
+  title               String
+  description         String?
+  province            String?
+  city                String?
+  district            String?
+  address             String?
+  area                Decimal?                @db.Decimal(18, 4)  // 面积
+  area_unit           String?                 // 面积单位
+  estimated_price     Decimal?                @db.Decimal(18, 2)  // 评估价格
+  floor               Int?
+  total_floors        Int?
+  property_type       String?
+  usage_type          String?
+  current_status      AssetStatus            @default(AVAILABLE)
+  listing_price       Decimal?                @db.Decimal(18, 2)
+  source_type         AssetSourceType
+  source_id           String?                 // 来源系统中的原始ID
+  source_url          String?                 // 来源链接
+  metadata            Json?                   // 额外元数据
+  images              Json?                   // 图片URL列表
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+  deleted_at          DateTime?
+
+  // 关联关系
+  enterprise          Enterprise?             @relation(fields: [enterprise_id], references: [id], onDelete: SetNull)
+  source              AssetSource?            @relation(fields: [source_type], references: [asset_type])
+  valuations          AssetValuation[]
+
+  @@map("assets")
+  @@index([enterprise_id])
+  @@index([asset_type])
+  @@index([source_type])
+  @@index([current_status])
+  @@index([province, city])
+  @@index([deleted_at])
+}
+
+enum AssetType {
+  // 联交所资产
+  LISTED_SHARE        // 上市公司股份
+  BOND                // 债券
+  // 法拍资产
+  JUDICIAL_SALE       // 法拍房
+  JUDICIAL_LAND       // 法拍土地
+  JUDICIAL_VEHICLE    // 法拍车辆
+  JUDICIAL_MACHINERY  // 法拍机械设备
+  // 二手房
+  RESIDENTIAL         // 住宅
+  COMMERCIAL          // 商业
+  OFFICE              // 办公
+  INDUSTRIAL          // 工业
+  PARKING             // 车位
+  LAND                // 土地
+}
+
+enum AssetStatus {
+  AVAILABLE
+  PENDING
+  SOLD
+  OFF_MARKET
+  EXPIRED
+}
+
+enum AssetSourceType {
+  STOCK_EXCHANGE      // 联交所
+  JUDICIAL_AUCTION    // 法拍
+  SECOND_HAND          // 二手房
+}
+
+model AssetSource {
+  id                  String                  @id @default(uuid())
+  asset_type          AssetSourceType         @unique
+  name                String
+  description         String?
+  base_url            String?
+  api_endpoint        String?
+  is_active           Boolean                 @default(true)
+  last_sync_at        DateTime?
+  sync_frequency      Int?                    // 同步频率（分钟）
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+
+  @@map("asset_sources")
+}
+
+model AssetValuation {
+  id                  String                  @id @default(uuid())
+  asset_id            String
+  valuation_date      DateTime                @default(now())
+  valuation_method    String?
+  market_value        Decimal?                @db.Decimal(18, 2)
+  appraised_value     Decimal?                @db.Decimal(18, 2)
+  liquidation_value   Decimal?               @db.Decimal(18, 2)
+  comparable_data     Json?                   // 可比数据
+  valuation_notes     String?
+  valuation_model     String?                 // 估值模型版本
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+
+  // 关联关系
+  asset               Asset                   @relation(fields: [asset_id], references: [id], onDelete: Cascade)
+
+  @@map("asset_valuations")
+  @@index([asset_id])
+  @@index([valuation_date])
+}
+
+// ==================== 4. NFS 计算相关表 ====================
+
+model NFSCalculationResult {
+  id                  String                  @id @default(uuid())
+  enterprise_id       String
+  calculation_date    DateTime                @default(now())
+  nfs_score           Decimal?                @db.Decimal(10, 4)
+  nfs_grade           String?
+  liquidity_score     Decimal?                @db.Decimal(10, 4)
+  profitability_score Decimal?                @db.Decimal(10, 4)
+  growth_score        Decimal?                @db.Decimal(10, 4)
+  stability_score     Decimal?                @db.Decimal(10, 4)
+  market_score        Decimal?                @db.Decimal(10, 4)
+  raw_data            Json?                   // 原始计算数据
+  calculation_params  Json?                   // 计算参数
+  model_version       String?
+  confidence_level    Decimal?                @db.Decimal(5, 4)
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+
+  // 关联关系
+  enterprise          Enterprise              @relation(fields: [enterprise_id], references: [id], onDelete: Cascade)
+  params_snapshot     NFSParamsSnapshot?
+
+  @@map("nfs_calculation_results")
+  @@index([enterprise_id])
+  @@index([calculation_date])
+  @@index([nfs_grade])
+}
+
+model NFSParamsSnapshot {
+  id                  String                  @id @default(uuid())
+  calculation_id      String                  @unique
+  snapshot_date       DateTime                @default(now())
+  params_data         Json                    // 参数快照JSON
+  params_hash         String?                 // 参数哈希
+  created_at          DateTime                @default(now())
+
+  // 关联关系
+  calculation         NFSCalculationResult    @relation(fields: [calculation_id], references: [id], onDelete: Cascade)
+
+  @@map("nfs_params_snapshots")
+  @@index([calculation_id])
+  @@index([snapshot_date])
+}
+
+// ==================== 5. 报告相关表 ====================
+
+model ReportTemplate {
+  id                  String                  @id @default(uuid())
+  name                String
+  type                ReportType
+  description         String?
+  template_content   Json                    // 模板内容
+  is_active           Boolean                 @default(true)
+  version             String?
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+
+  @@map("report_templates")
+  @@index([type])
+  @@index([is_active])
+}
+
+enum ReportType {
+  CREDIT_REPORT
+  RISK_ASSESSMENT
+  ASSET_VALUATION
+  NFS_ANALYSIS
+  COMPREHENSIVE
+  CUSTOM
+}
+
+model Report {
+  id                  String                  @id @default(uuid())
+  title               String
+  type                ReportType
+  template_id         String?
+  enterprise_id       String?
+  asset_id            String?
+  content             Json                    // 报告内容
+  status              ReportStatus            @default(GENERATING)
+  generation_progress Int?                    @default(0)  // 0-100
+  file_path           String?                 // 生成的报告文件路径
+  file_size           Int?
+  mime_type           String?
+  generated_by        String?                 // 生成方式：MANUAL/AUTO
+  creator_id          String?
+  assigned_to         String?
+  due_date            DateTime?
+  completed_at        DateTime?
+  error_message       String?
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+  deleted_at          DateTime?
+
+  // 关联关系
+  template            ReportTemplate?         @relation(fields: [template_id], references: [id])
+  enterprise          Enterprise?             @relation(fields: [enterprise_id], references: [id], onDelete: SetNull)
+  asset               Asset?                  @relation(fields: [asset_id], references: [id], onDelete: SetNull)
+  creator             User?                   @relation("CreatedReports", fields: [creator_id], references: [id], onDelete: SetNull)
+  assigned_user       User?                   @relation("AssignedWorkorders", fields: [assigned_to], references: [id], onDelete: SetNull)
+
+  @@map("reports")
+  @@index([type])
+  @@index([enterprise_id])
+  @@index([asset_id])
+  @@index([status])
+  @@index([creator_id])
+  @@index([assigned_to])
+  @@index([created_at])
+  @@index([deleted_at])
+}
+
+// ==================== 6. 工单相关表 ====================
+
+model WorkOrder {
+  id                  String                  @id @default(uuid())
+  title               String
+  description         String?
+  type                WorkOrderType
+  priority            WorkOrderPriority       @default(MEDIUM)
+  status              WorkOrderStatus         @default(PENDING)
+  enterprise_id       String?
+  asset_id            String?
+  report_id           String?
+  creator_id          String?
+  assigned_to         String?
+  due_date            DateTime?
+  started_at          DateTime?
+  completed_at        DateTime?
+  metadata            Json?                   // 额外数据
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+  deleted_at          DateTime?
+
+  // 关联关系
+  enterprise          Enterprise?             @relation(fields: [enterprise_id], references: [id], onDelete: SetNull)
+  asset               Asset?                  @relation(fields: [asset_id], references: [id], onDelete: SetNull)
+  report              Report?                 @relation(fields: [report_id], references: [id], onDelete: SetNull)
+  creator             User?                   @relation(fields: [creator_id], references: [id], onDelete: SetNull)
+  assigned_user       User?                   @relation(fields: [assigned_to], references: [id], onDelete: SetNull)
+  status_history      WorkOrderStatusHistory[]
+
+  @@map("workorders")
+  @@index([type])
+  @@index([priority])
+  @@index([status])
+  @@index([enterprise_id])
+  @@index([creator_id])
+  @@index([assigned_to])
+  @@index([created_at])
+  @@index([deleted_at])
+}
+
+enum WorkOrderType {
+  ENTERPRISE_QUERY
+  ASSET_SEARCH
+  REPORT_GENERATION
+  RISK_ASSESSMENT
+  NFS_CALCULATION
+  DATA_SYNC
+  SYSTEM_MAINTENANCE
+  OTHER
+}
+
+enum WorkOrderPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum WorkOrderStatus {
+  PENDING
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  WAITING_APPROVAL
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+model WorkOrderStatusHistory {
+  id                  String                  @id @default(uuid())
+  workorder_id        String
+  from_status         WorkOrderStatus?
+  to_status           WorkOrderStatus
+  comment             String?
+  changed_by          String?
+  changed_at          DateTime                @default(now())
+
+  // 关联关系
+  workorder           WorkOrder               @relation(fields: [workorder_id], references: [id], onDelete: Cascade)
+
+  @@map("workorder_status_history")
+  @@index([workorder_id])
+  @@index([changed_at])
+}
